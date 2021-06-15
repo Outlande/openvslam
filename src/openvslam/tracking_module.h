@@ -272,6 +272,10 @@ protected:
     bool update_pose_is_requested_ = false;
     //! Requested pose to update
     Mat44_t requested_pose_;
+
+    int success_times = 0;
+    int lost_times = 0;
+    int relocal_times = 0;
 };
 
 } // namespace openvslam

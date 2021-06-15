@@ -42,3 +42,6 @@ cmake-build-release/
 
 # vcpkg
 /3rd/vcpkg/
+
+results
+orb_vocab.fbow

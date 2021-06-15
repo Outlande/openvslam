@@ -348,6 +348,13 @@ void tracking_module::track() {
 
     // update last frame
     last_frm_ = curr_frm_;
+    if (tracking_state_ == tracker_state_t::Lost){
+        lost_times++;
+    }
+    else if(tracking_state_ == tracker_state_t::Tracking){
+        success_times++;
+    }
+    std::cout<<"Success Times: "<<success_times <<" Lost times: "<<lost_times<<" Relocal times:"<<relocal_times<<std::endl;
 }
 
 bool tracking_module::initialize() {
@@ -413,6 +420,7 @@ bool tracking_module::track_current_frame() {
         succeeded = relocalizer_.relocalize(curr_frm_);
         if (succeeded) {
             last_reloc_frm_id_ = curr_frm_.id_;
+            relocal_times++;
         }
     }
 
