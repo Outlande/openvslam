@@ -137,6 +137,21 @@ public:
     //! elapsed microseconds for each tracking
     double elapsed_ms_ = 0.0;
 
+    Mat44_t localize_RGBD_image(const cv::Mat& img, const cv::Mat& depthmap, const double timestamp,
+                                             const cv::Mat& mask);
+
+    Mat44_t localize_mono_image(const cv::Mat& img, const double timestamp, const cv::Mat& mask);
+
+    void localize();
+
+    void visualize_keypoints();
+
+    cv::Mat combine_images(cv::Mat img1, cv::Mat img2);
+
+    bool track_only_landmark();
+
+    void search_curr_pose_landmark();
+
 protected:
     //-----------------------------------------
     // tracking processes
@@ -272,6 +287,12 @@ protected:
     bool update_pose_is_requested_ = false;
     //! Requested pose to update
     Mat44_t requested_pose_;
+
+    int success_num = 0;
+    int lost_num = 0;
+    int relocal_num = 0;
+
+    std::vector<data::landmark*> pose_landmarks_;
 };
 
 } // namespace openvslam

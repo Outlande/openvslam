@@ -113,6 +113,14 @@ public:
     //! (Note: RGB and Depth images must be aligned)
     std::shared_ptr<Mat44_t> feed_RGBD_frame(const cv::Mat& rgb_img, const cv::Mat& depthmap, const double timestamp, const cv::Mat& mask = cv::Mat{});
 
+    Mat44_t feed_monocular_frame_localize(const cv::Mat& img,
+                                          const double timestamp,
+                                          const cv::Mat& mask=cv::Mat{});
+
+    Mat44_t feed_RGBD_frame_localize(const cv::Mat& rgb_img,
+                                     const cv::Mat& depthmap,
+                                     const double timestamp,
+                                     const cv::Mat& mask=cv::Mat{});
     //-----------------------------------------
     // pose initializing/updating
 

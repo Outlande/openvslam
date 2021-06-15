@@ -254,6 +254,26 @@ std::shared_ptr<Mat44_t> system::feed_monocular_frame(const cv::Mat& img, const 
     return cam_pose_wc;
 }
 
+Mat44_t system::feed_monocular_frame_localize(const cv::Mat &img,
+                                              const double timestamp,
+                                              const cv::Mat &mask) {
+  assert(camera_->setup_type_ == camera::setup_type_t::Monocular);
+
+  check_reset_request();
+
+  const Mat44_t cam_pose_cw =
+      tracker_->localize_mono_image(img, timestamp, mask);
+
+  frame_publisher_->update(tracker_);
+  if (tracker_->tracking_state_ == tracker_state_t::Tracking) {
+    map_publisher_->set_current_cam_pose(cam_pose_cw);
+    map_publisher_->set_current_cam_pose_wc(
+        tracker_->curr_frm_.get_cam_pose_inv());
+  }
+
+  return cam_pose_cw;
+}
+
 std::shared_ptr<Mat44_t> system::feed_stereo_frame(const cv::Mat& left_img, const cv::Mat& right_img, const double timestamp, const cv::Mat& mask) {
     assert(camera_->setup_type_ == camera::setup_type_t::Stereo);
 
@@ -284,6 +304,27 @@ std::shared_ptr<Mat44_t> system::feed_RGBD_frame(const cv::Mat& rgb_img, const c
     }
 
     return cam_pose_wc;
+}
+
+Mat44_t system::feed_RGBD_frame_localize(const cv::Mat &rgb_img,
+                                         const cv::Mat &depthmap,
+                                         const double timestamp,
+                                         const cv::Mat &mask) {
+  assert(camera_->setup_type_ == camera::setup_type_t::RGBD);
+
+  check_reset_request();
+
+  const Mat44_t cam_pose_cw =
+      tracker_->localize_RGBD_image(rgb_img, depthmap, timestamp, mask);
+
+  frame_publisher_->update(tracker_);
+  if (tracker_->tracking_state_ == tracker_state_t::Tracking) {
+    map_publisher_->set_current_cam_pose(cam_pose_cw);
+    map_publisher_->set_current_cam_pose_wc(
+        tracker_->curr_frm_.get_cam_pose_inv());
+  }
+
+  return cam_pose_cw;
 }
 
 bool system::update_pose(const Mat44_t& pose) {

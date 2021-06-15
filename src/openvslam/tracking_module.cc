@@ -4,6 +4,7 @@
 #include "openvslam/mapping_module.h"
 #include "openvslam/global_optimization_module.h"
 #include "openvslam/camera/base.h"
+#include "openvslam/camera/perspective.h"
 #include "openvslam/data/landmark.h"
 #include "openvslam/data/map_database.h"
 #include "openvslam/data/bow_database.h"
@@ -12,6 +13,10 @@
 #include "openvslam/module/local_map_updater.h"
 #include "openvslam/util/image_converter.h"
 #include "openvslam/util/yaml.h"
+
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc_c.h>
+#include <opencv2/imgproc/imgproc.hpp>
 
 #include <chrono>
 #include <unordered_map>
@@ -350,6 +355,370 @@ void tracking_module::track() {
     last_frm_ = curr_frm_;
 }
 
+Mat44_t tracking_module::localize_RGBD_image(const cv::Mat& img, const cv::Mat& depthmap, const double timestamp,
+                                             const cv::Mat& mask) {
+    const auto start = std::chrono::system_clock::now();
+
+    // color and depth scale conversion
+    img_gray_ = img;
+    cv::Mat img_depth = depthmap;
+    util::convert_to_grayscale(img_gray_, camera_->color_order_);
+    util::convert_to_true_depth(img_depth, depthmap_factor_);
+
+    // create current frame object
+    curr_frm_ =
+        data::frame(img_gray_, img_depth, timestamp, extractor_left_, bow_vocab_, camera_, true_depth_thr_, mask);
+
+    localize();
+
+    const auto end = std::chrono::system_clock::now();
+    elapsed_ms_ = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+    return curr_frm_.cam_pose_cw_;
+}
+
+Mat44_t tracking_module::localize_mono_image(const cv::Mat& img, const double timestamp, const cv::Mat& mask) {
+    const auto start = std::chrono::system_clock::now();
+
+    // color and depth scale conversion
+    img_gray_ = img;
+    util::convert_to_grayscale(img_gray_, camera_->color_order_);
+
+    // create current frame object
+    curr_frm_ = data::frame(img_gray_, timestamp, extractor_left_, bow_vocab_, camera_, true_depth_thr_, mask);
+    localize();
+
+    const auto end = std::chrono::system_clock::now();
+    elapsed_ms_ = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+    return curr_frm_.cam_pose_cw_;
+}
+
+void tracking_module::localize() {
+    last_tracking_state_ = tracking_state_;
+
+    // check if pause is requested
+    check_and_execute_pause();
+    while (is_paused()) {
+        std::this_thread::sleep_for(std::chrono::microseconds(5000));
+    }
+
+    // LOCK the map database
+    std::lock_guard<std::mutex> lock(data::map_database::mtx_database_);
+
+    {
+        // apply replace of landmarks observed in the last frame
+        apply_landmark_replace();
+        // update the camera pose of the last frame
+        // because the mapping module might optimize the camera pose of the last frame's reference keyframe
+        update_last_frame();
+
+        // set the reference keyframe of the current frame
+        curr_frm_.ref_keyfrm_ = last_frm_.ref_keyfrm_;
+        bool succeeded = false;
+        if (tracking_state_ == tracker_state_t::Lost) {
+            succeeded = track_current_frame();
+        } else {
+            curr_frm_.set_cam_pose(twist_ * last_frm_.cam_pose_cw_);
+            succeeded = track_only_landmark();
+        }
+
+        // // update the local map and optimize the camera pose of the current frame
+        // // dont need local map ,only localize use landmark
+        // if (succeeded) {
+        //     update_local_map();
+        //     succeeded = optimize_current_frame_with_local_map();
+        // }
+
+        // update the motion model
+        if (succeeded) {
+            update_motion_model();
+        }
+
+        // state transition
+        tracking_state_ = succeeded ? tracker_state_t::Tracking : tracker_state_t::Lost;
+
+        // // update the frame statistics
+        // map_db_->update_frame_statistics(curr_frm_, tracking_state_ == tracker_state_t::Lost);
+
+        // // if tracking is failed within 5.0 sec after initialization, reset the system
+        // constexpr float init_retry_thr = 5.0;
+        // if (tracking_state_ == tracker_state_t::Lost
+        //     && curr_frm_.id_ - initializer_.get_initial_frame_id() < camera_->fps_ * init_retry_thr) {
+        //     spdlog::info("tracking lost within {} sec after initialization", init_retry_thr);
+        //     system_->request_reset();
+        //     return;
+        // }
+
+        // show message if tracking has been lost
+        if (last_tracking_state_ != tracker_state_t::Lost && tracking_state_ == tracker_state_t::Lost) {
+            spdlog::info("tracking lost: frame {}", curr_frm_.id_);
+            // when lost, velocity dont valid
+            curr_frm_.cam_pose_cw_is_valid_ = false;
+        }
+        if (tracking_state_ == tracker_state_t::Lost) {
+            lost_num++;
+        } else {
+            success_num++;
+        }
+        spdlog::info("tracking success number{} fail number{} relocal number{}", success_num, lost_num, relocal_num);
+
+        // // check to insert the new keyframe derived from the current frame
+        // if (succeeded && new_keyframe_is_needed()) {
+        //     insert_new_keyframe();
+        // }
+
+        // tidy up observations
+        for (unsigned int idx = 0; idx < curr_frm_.num_keypts_; ++idx) {
+            if (curr_frm_.landmarks_.at(idx) && curr_frm_.outlier_flags_.at(idx)) {
+                curr_frm_.landmarks_.at(idx) = nullptr;
+            }
+        }
+    }
+
+    // // store the relative pose from the reference keyframe to the current frame
+    // // to update the camera pose at the beginning of the next tracking process
+    // if (curr_frm_.cam_pose_cw_is_valid_) {
+    //     last_cam_pose_from_ref_keyfrm_ = curr_frm_.cam_pose_cw_ * curr_frm_.ref_keyfrm_->get_cam_pose_inv();
+    // }
+
+    // update last frame
+    visualize_keypoints();
+    last_frm_ = curr_frm_;
+}
+
+void tracking_module::visualize_keypoints()
+{
+    // plot keypoints
+    // not tracked kpts are red, local tracked are green, and server tracked are blue
+    std::vector<cv::KeyPoint> unmatched_keypts, outlier_keypts, local_keypts;
+    for (unsigned int idx = 0; idx < curr_frm_.num_keypts_; ++idx) {
+        auto lm = curr_frm_.landmarks_.at(idx);
+        if (!lm) {
+            if (curr_frm_.outlier_flags_.at(idx)) {
+                outlier_keypts.push_back(curr_frm_.keypts_.at(idx));
+            } else {
+                unmatched_keypts.push_back(curr_frm_.keypts_.at(idx));
+            }
+        } else {
+            local_keypts.push_back(curr_frm_.keypts_.at(idx));
+        }
+    }
+
+    // get server landmark from map db
+    std::vector<cv::KeyPoint> project_keypts;
+    Mat33_t K;
+    if (camera_->model_type_ == camera::model_type_t::Perspective) {
+        K = static_cast<camera::perspective*>(camera_)->eigen_cam_matrix_;
+        // spdlog::debug("K is {}, {}, {}, {}", K(0,0), K(1,1), K(0,2), K(1,2));
+        // std::cout << "K is " << K << std::endl;
+    } else {
+        spdlog::warn("Not using perspective camera model!");
+    }
+
+    cv::Mat project_show = img_gray_.clone();
+    for (auto lm : pose_landmarks_) {
+        // coodinate transformation
+        Vec3_t cam_loc = K * (curr_frm_.cam_pose_cw_.block(0, 0, 3, 3) * lm->get_pos_in_world() +
+                              curr_frm_.cam_pose_cw_.block(0, 3, 3, 1));
+        Vec3_t pos_c = curr_frm_.cam_pose_cw_.block(0, 0, 3, 3) * lm->get_pos_in_world() +
+                       curr_frm_.cam_pose_cw_.block(0, 3, 3, 1);
+        double z = pos_c[2];
+        if (z < 0) {
+            spdlog::debug("Invalid z {}", z);
+            continue;
+        }
+        float u = cam_loc[0] / cam_loc[2];
+        float v = cam_loc[1] / cam_loc[2];
+
+        if (u > 0 && u < camera_->cols_ && v > 0 && v < camera_->rows_) {
+            // spdlog::debug("cam loc is {}, {}, {}", cam_loc[0], cam_loc[1], cam_loc[2]);
+            // std::cout << "Tcw is " << curr_frm_.cam_pose_cw_ << std::endl;
+            // std::cout << "landmark loc " << lm->get_pos_in_world() << std::endl;
+            project_keypts.push_back(cv::KeyPoint(u, v, 1.0));
+            // if (lm->ref_keyfrm_){
+            //     cv::putText(project_show,std::to_string(lm->ref_keyfrm_->id_),
+            //     cv::Point(int(u), int(v)), CV_FONT_HERSHEY_COMPLEX, 0.4, cvScalar(255, 255, 255), 1);
+            // }
+        }
+    }
+
+    cv::Mat image_show = img_gray_.clone();
+    cv::drawKeypoints(image_show, unmatched_keypts, image_show, cvScalar(0, 255, 255));
+    cv::drawKeypoints(image_show, outlier_keypts, image_show, cvScalar(0, 0, 255));
+    cv::drawKeypoints(image_show, local_keypts, image_show, cvScalar(0, 255, 0));
+
+    cv::putText(image_show, "       local : " + std::to_string(local_keypts.size()),
+                cv::Point(10, image_show.rows - 70), CV_FONT_HERSHEY_COMPLEX, 0.4, cvScalar(0, 255, 0), 1);
+    cv::putText(image_show, "     outlier : " + std::to_string(outlier_keypts.size()),
+                cv::Point(10, image_show.rows - 30), CV_FONT_HERSHEY_COMPLEX, 0.4, cvScalar(0, 0, 255), 1);
+    cv::putText(image_show, "unmatched : " + std::to_string(unmatched_keypts.size()),
+                cv::Point(10, image_show.rows - 10), CV_FONT_HERSHEY_COMPLEX, 0.4, cvScalar(0, 255, 255), 1);
+
+    cv::drawKeypoints(project_show, project_keypts, project_show, cvScalar(0, 255, 0));
+    cv::putText(project_show,
+                "server landmark : " + std::to_string(pose_landmarks_.size()) +
+                    " (in current frame : " + std::to_string(project_keypts.size()) + ")",
+                cv::Point(10, project_show.rows - 10), CV_FONT_HERSHEY_COMPLEX, 0.4, cvScalar(0, 0, 255), 1);
+
+    // plot matching valid kpts
+    cv::Mat combine_img = combine_images(image_show, project_show);
+    for (unsigned int idx = 0; idx < curr_frm_.num_keypts_; ++idx) {
+        auto lm = curr_frm_.landmarks_.at(idx);
+        if (!lm) continue;
+
+        auto kpt = curr_frm_.keypts_.at(idx);
+
+        Vec3_t cam_loc = K * (curr_frm_.cam_pose_cw_.block(0, 0, 3, 3) * lm->get_pos_in_world() +
+                              curr_frm_.cam_pose_cw_.block(0, 3, 3, 1));
+        float u = cam_loc[0] / cam_loc[2];
+        float v = cam_loc[1] / cam_loc[2];
+
+        cv::line(combine_img, cv::Point(kpt.pt.x, kpt.pt.y), cv::Point(u + image_show.cols, v), cvScalar(245, 143, 41),
+                 1);
+    }
+
+    cv::namedWindow("keypoints", 1);
+    cv::imshow("keypoints", combine_img);
+    // cv::imwrite("draw/"+std::to_string(curr_frm_.id_)+".png", combine_img);
+    cv::waitKey(2);
+}
+
+cv::Mat tracking_module::combine_images(cv::Mat img1, cv::Mat img2)
+{
+    int height = img1.rows;
+    int width = img1.cols;
+    // Create a new 3 channel image
+    cv::Mat DispImage = cv::Mat::zeros(cv::Size(width * 2, height), CV_8UC3);
+
+    cv::Rect ROI1(0, 0, width, height);
+    img1.copyTo(DispImage(ROI1));
+
+    cv::Rect ROI2(width, 0, width, height);
+    img2.copyTo(DispImage(ROI2));
+
+    return DispImage;
+}
+
+
+bool tracking_module::track_only_landmark() {
+    // acquire more 2D-3D matches by reprojecting the local landmarks to the current frame
+    search_curr_pose_landmark();
+    // optimize the pose
+    pose_optimizer_.optimize(curr_frm_);
+
+    // count up the number of tracked landmarks
+    num_tracked_lms_ = 0;
+    for (unsigned int idx = 0; idx < curr_frm_.num_keypts_; ++idx) {
+        auto lm = curr_frm_.landmarks_.at(idx);
+        if (!lm) {
+            continue;
+        }
+
+        if (!curr_frm_.outlier_flags_.at(idx)) {
+            // the observation has been considered as inlier in the pose optimization
+            assert(lm->has_observation());
+            // count up
+            ++num_tracked_lms_;
+            // increment the number of tracked frame
+            lm->increase_num_observed();
+        } else {
+            // the observation has been considered as outlier in the pose optimization
+            // remove the observation
+            curr_frm_.landmarks_.at(idx) = nullptr;
+        }
+    }
+    std::cout << "current time: " << std::setprecision(19) << curr_frm_.timestamp_ << std::endl;
+    std::cout << "pose: " << curr_frm_.get_cam_pose_inv() << std::endl;
+    spdlog::info("valid tracked server landmarks num: {} ", num_tracked_lms_);
+
+    constexpr unsigned int num_tracked_lms_thr = 20;
+
+    // if recently relocalized, use the more strict threshold
+    // if (curr_frm_.id_ < last_reloc_frm_id_ + camera_->fps_ && num_tracked_lms_ < 2 * num_tracked_lms_thr) {
+    //     spdlog::debug("local map tracking failed: {} matches < {}", num_tracked_lms_, 2 * num_tracked_lms_thr);
+    //     return false;
+    // }
+
+    // check the threshold of the number of tracked landmarks
+    if (num_tracked_lms_ < num_tracked_lms_thr) {
+        spdlog::debug("local map tracking failed: {} matches < {}", num_tracked_lms_, num_tracked_lms_thr);
+        return false;
+    }
+
+    return true;
+}
+
+void tracking_module::search_curr_pose_landmark() {
+    double distance_thr = 20;
+    // select the landmarks which can be reprojected from the ones observed in the current frame
+
+    // get landmark which are around the camera pose
+    pose_landmarks_.clear();
+    std::vector<data::landmark*> landmarks = map_db_->get_all_landmarks();
+    for (size_t idx = 0; idx < landmarks.size(); idx++) {
+        auto lm = landmarks.at(idx);
+        if (lm->will_be_erased()) {
+            continue;
+        }
+        Vec3_t cam_pose = curr_frm_.get_cam_center();
+        Vec3_t lm_pos = lm->get_pos_in_world();
+        double distance = (cam_pose - lm_pos).norm();
+        if (distance < distance_thr) {
+            pose_landmarks_.push_back(lm);
+        }
+    }
+    bool found_proj_candidate = false;
+    // temporary variables
+    Vec2_t reproj;
+    float x_right;
+    unsigned int pred_scale_level;
+    int number = 0;
+    for (auto lm : pose_landmarks_) {
+        // avoid the landmarks which cannot be reprojected (== observed in the current frame)
+        if (lm->identifier_in_local_lm_search_ == curr_frm_.id_) {
+            continue;
+        }
+        if (lm->will_be_erased()) {
+            continue;
+        }
+
+        // check the observability
+        if (curr_frm_.can_observe(lm, 0.5, reproj, x_right, pred_scale_level)) {
+            // pass the temporary variables
+            lm->reproj_in_tracking_ = reproj;
+            lm->x_right_in_tracking_ = x_right;
+            lm->scale_level_in_tracking_ = pred_scale_level;
+
+            // this landmark can be reprojected
+            lm->is_observable_in_tracking_ = true;
+
+            // this landmark is observable from the current frame
+            lm->increase_num_observable();
+
+            found_proj_candidate = true;
+            number++;
+        } else {
+            // this landmark cannot be reprojected
+            lm->is_observable_in_tracking_ = false;
+        }
+    }
+    if (!found_proj_candidate) {
+        return;
+    }
+
+    // acquire more 2D-3D matches by projecting the local landmarks to the current frame
+    match::projection projection_matcher(0.8);
+    const float margin = (curr_frm_.id_ < last_reloc_frm_id_ + 2)
+                             ? 20.0
+                             : ((camera_->setup_type_ == camera::setup_type_t::RGBD) ? 10.0 : 5.0);
+    auto matches = projection_matcher.match_frame_and_landmarks(curr_frm_, pose_landmarks_, margin);
+
+    spdlog::debug(" {} of {} server landmarks are observed when tracking server map", number, pose_landmarks_.size());
+
+    spdlog::debug(" {} of {} server landmarks are succesfully matched ", matches, pose_landmarks_.size());
+}
+
 bool tracking_module::initialize() {
     // try to initialize with the current frame
     initializer_.initialize(curr_frm_);
@@ -412,6 +781,7 @@ bool tracking_module::track_current_frame() {
         // try to relocalize
         succeeded = relocalizer_.relocalize(curr_frm_);
         if (succeeded) {
+            relocal_num++;
             last_reloc_frm_id_ = curr_frm_.id_;
         }
     }
