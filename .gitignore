@@ -45,3 +45,7 @@ cmake-build-release/
 
 results
 orb_vocab.fbow
+
+frame_trajectory.txt
+track_times.txt
+keyframe_trajectory.txt
