@@ -40,6 +40,8 @@ cmake \
 
 
 # 是否开mapping模块
+projection match 中搜索的金字塔level会影响定位成功率，原来只search下一层，现在每一层都search，search的level多，效果就会更好
+(可能不同level的匹配会有问题)
 
 判断是否lost
 
