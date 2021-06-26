@@ -25,7 +25,9 @@ unsigned int projection::match_frame_and_landmarks(data::frame& frm, const std::
         // Acquire keypoints in the cell where the reprojected 3D points exist
         const auto indices_in_cell = frm.get_keypoints_in_cell(local_lm->reproj_in_tracking_(0), local_lm->reproj_in_tracking_(1),
                                                                margin * frm.scale_factors_.at(pred_scale_level),
-                                                               pred_scale_level - 1, pred_scale_level);
+                                                               // search level more can get more right levels
+                                                               0, frm.num_scale_levels_ - 1);
+                                                               // pred_scale_level - 1, pred_scale_level);
         if (indices_in_cell.empty()) {
             continue;
         }
