@@ -184,6 +184,14 @@ void landmark::compute_descriptor() {
 }
 
 void landmark::update_normal_and_depth() {
+    if (!observations_.count(ref_keyfrm_)) {  // This will rarely happen when landing map from local disk!
+        for (auto observation : observations_) {
+            if (!observation.first) continue;
+            ref_keyfrm_ = observation.first;
+            break;
+        }
+    }
+
     std::map<keyframe*, unsigned int> observations;
     keyframe* ref_keyfrm;
     Vec3_t pos_w;

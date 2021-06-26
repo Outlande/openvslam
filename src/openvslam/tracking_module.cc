@@ -419,7 +419,11 @@ void tracking_module::localize() {
         if (tracking_state_ == tracker_state_t::Lost) {
             succeeded = track_current_frame();
         } else {
-            curr_frm_.set_cam_pose(twist_ * last_frm_.cam_pose_cw_);
+            if (twist_is_valid_ && last_reloc_frm_id_ + 2 < curr_frm_.id_)
+                curr_frm_.set_cam_pose(twist_ * last_frm_.cam_pose_cw_);
+            else
+                curr_frm_.set_cam_pose(last_frm_.cam_pose_cw_);
+
             succeeded = track_only_landmark();
         }
 
@@ -629,7 +633,8 @@ bool tracking_module::track_only_landmark() {
         }
     }
     std::cout << "current time: " << std::setprecision(19) << curr_frm_.timestamp_ << std::endl;
-    std::cout << "pose: " << curr_frm_.get_cam_pose_inv() << std::endl;
+    std::cout << "current id: " << curr_frm_.id_ << std::endl;
+    std::cout << "pose: " << curr_frm_.cam_pose_cw_ << std::endl;
     spdlog::info("valid tracked server landmarks num: {} ", num_tracked_lms_);
 
     constexpr unsigned int num_tracked_lms_thr = 20;
@@ -783,6 +788,9 @@ bool tracking_module::track_current_frame() {
         if (succeeded) {
             relocal_num++;
             last_reloc_frm_id_ = curr_frm_.id_;
+        }
+        else{
+            std::cout<<"relocalize false"<<std::endl;
         }
     }
 

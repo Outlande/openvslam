@@ -36,5 +36,15 @@ cmake \
 -c ./example/geek/geek.yaml \
 --frame-skip 1 -p results/geek_map.msg --debug
 
+./build/univloc_to_openvslam ./orb_vocab.fbow example/geek/geek.yaml ./results/geek_map.msg
+
 
 # 是否开mapping模块
+
+判断是否lost
+
+不更新描述子
+
+不优化inliner
+
+rotaion 和 translation

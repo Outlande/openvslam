@@ -49,3 +49,5 @@ orb_vocab.fbow
 frame_trajectory.txt
 track_times.txt
 keyframe_trajectory.txt
+.vscode
+image/
