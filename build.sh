@@ -36,7 +36,10 @@ cmake \
 -c ./example/geek/geek.yaml \
 --frame-skip 1 -p results/geek_map.msg --debug
 
-./build/univloc_to_openvslam ./orb_vocab.fbow example/geek/geek.yaml ./results/geek_map.msg
+./build/univloc_to_openvslam ~/.ros/univloc_map/geek.msg ./results/geek_map.msg
+
+./build/run_tum_rgbd_slam -v ./orb_vocab.fbow -d ../datasets/gdata0719/10-shine/ -c ./example/geek/geek_fisheye.yaml -p results/geek_fisheye_map.msg --eval-log --debug
+
 
 
 # 是否开mapping模块

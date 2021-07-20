@@ -118,6 +118,7 @@ unsigned int frame_publisher::draw_tracked_points(cv::Mat& img, const std::vecto
 
     for (unsigned int i = 0; i < curr_keypts.size(); ++i) {
         if (!is_tracked.at(i)) {
+            cv::circle(img, curr_keypts.at(i).pt * mag, 2, localization_color_, -1);
             continue;
         }
 

@@ -1,0 +1,54 @@
+# TUM VI monocular model
+# https://vision.in.tum.de/data/datasets/visual-inertial-dataset#geometric_calibration
+# pinhole (512x512)
+
+#==============#
+# Camera Model #
+#==============#
+
+Camera:
+  name: "realsense_D435i0"
+  setup: "monocular"
+  model: "fisheye"
+
+  fx: 1630.9126098481404
+  fy: 1639.8748313957333
+  cx: 711.06560924493169
+  cy: 497.99759572321051
+
+  k1: -0.213782363
+  k2: 1.80349437
+  k3: -20.006455
+  k4: 65.219952
+
+  fps: 10
+  cols: 1280
+  rows: 960
+
+  color_order: "RGB"
+
+#================#
+# ORB Parameters #
+#================#
+
+Feature:
+  max_num_keypoints: 1000
+  ini_max_num_keypoints: 2000
+  scale_factor: 1.2
+  num_levels: 8
+  ini_fast_threshold: 20
+  min_fast_threshold: 7
+
+#====================#
+# Mapping Parameters #
+#====================#
+
+Mapping:
+  baseline_dist_thr_ratio: 0.02
+
+#========================#
+# Initializer Parameters #
+#========================#
+
+Initializer:
+  scaling_factor: 1.0
