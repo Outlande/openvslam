@@ -5,7 +5,7 @@
 #==============#
 
 Camera:
-  name: "TUM RGBD monocular 01"
+  name: "realsense_D435i0"
   setup: "monocular"
   model: "perspective"
 
@@ -20,7 +20,7 @@ Camera:
   p2: 0.
   k3: 0.
 
-  fps: 30.0
+  fps: 10.0
   cols: 848
   rows: 480
 
