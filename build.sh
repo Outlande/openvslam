@@ -41,6 +41,13 @@ cmake \
 ./build/run_tum_rgbd_slam -v ./orb_vocab.fbow -d ../datasets/gdata0719/10-shine/ -c ./example/geek/geek_fisheye.yaml -p results/geek_fisheye_map.msg --eval-log --debug
 
 
+./build/run_tum_rgbd_slam -v ./orb_vocab.fbow -d ../datasets/gdata0719/10-shine-front/ -c ./example/geek/geek.yaml -p results/geek_stereo_map.msg --eval-log --debug
+
+./build/run_openloris_localization \
+-v ./orb_vocab.fbow \
+-d ../datasets/gdata0719/10-shine-front/ \
+-c ./example/geek/geek.yaml \
+--frame-skip 1 -p results/geek_stereo_map.msg --debug
 
 # 是否开mapping模块
 projection match 中搜索的金字塔level会影响定位成功率，原来只search下一层，现在每一层都search，search的level多，效果就会更好
