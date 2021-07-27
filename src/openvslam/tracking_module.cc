@@ -425,7 +425,9 @@ void tracking_module::localize() {
             else
                 curr_frm_.set_cam_pose(last_frm_.cam_pose_cw_);
 
-            succeeded = track_only_landmark();
+            succeeded = track_current_frame();
+            if (succeeded)
+                succeeded = track_only_landmark();
         }
 
         // // update the local map and optimize the camera pose of the current frame
