@@ -25,3 +25,4 @@ cmake \
 
 
 # 是否开mapping模块
+test
