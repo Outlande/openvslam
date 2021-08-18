@@ -12,6 +12,10 @@ cmake \
     -d ../datasets/geek/map_bag/ \
     -c ./example/geek/geek.yaml -p results/geek_map.msg --eval-log
 
+./build/run_tum_rgbd_slam \
+    -v ./orb_vocab.fbow \
+    -d ../datasets/gdata0719/10-shine/ \
+    -c ./example/geek/geek_fisheye.yaml -p results/geek_map_fisheye.msg --eval-log
 
 ./build/run_geek_localization \
 -v ./orb_vocab.fbow \
