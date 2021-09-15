@@ -7,7 +7,7 @@ cmake \
     -DBUILD_EXAMPLES=ON \
     ..
 
-
+# openloris mapping
 ./build/run_tum_rgbd_slam \
 -v ./orb_vocab.fbow \
 -d ../datasets/openloris/market-1-1/ \
@@ -16,7 +16,7 @@ cmake \
 --eval-log \
 -p results/market1.msg
 
-
+# openloris localization
 ./build/run_openloris_localization \
 -v ./orb_vocab.fbow \
 -d ../datasets/openloris/market-1-1/ \
@@ -24,20 +24,23 @@ cmake \
 --frame-skip 1 -p results/market1.msg
 
 
+# geek+ mapping
 ./build/run_tum_rgbd_slam \
     -v ./orb_vocab.fbow \
     -d ../datasets/geek/map_bag/ \
     -c ./example/geek/geek.yaml -p results/geek_map.msg --eval-log --debug
 
-
+# geek+ localization
 ./build/run_openloris_localization \
 -v ./orb_vocab.fbow \
 -d ../datasets/geek/relocal_bag/ \
 -c ./example/geek/geek.yaml \
 --frame-skip 1 -p results/geek_map.msg --debug
 
+# change msg from openvlsam to univloc
 ./build/univloc_to_openvslam ~/.ros/univloc_map/geek.msg ./results/geek_map.msg
 
+# change msg from openvlsam to univloc
 ./build/run_tum_rgbd_slam -v ./orb_vocab.fbow -d ../datasets/gdata0719/10-shine/ -c ./example/geek/geek_fisheye.yaml -p results/geek_fisheye_map.msg --eval-log --debug
 
 
