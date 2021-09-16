@@ -92,6 +92,7 @@ void viewer::run() {
 
         cv::imshow(frame_viewer_name_, frame_publisher_->draw_frame());
         cv::waitKey(interval_ms_);
+        // cv::waitKey(2);
 
         // 3. state transition
 

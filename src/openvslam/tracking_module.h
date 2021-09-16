@@ -165,6 +165,8 @@ protected:
     //! Track the current frame
     bool track_current_frame();
 
+    bool localize_current_frame();
+
     //! Update the motion model using the current and last frames
     void update_motion_model();
 
@@ -291,6 +293,10 @@ protected:
     int success_num = 0;
     int lost_num = 0;
     int relocal_num = 0;
+
+    int near_ = 0;
+    int far_ = 10;
+    int back_ = 1;
 
     std::vector<data::landmark*> pose_landmarks_;
 };

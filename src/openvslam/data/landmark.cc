@@ -22,7 +22,9 @@ landmark::landmark(const unsigned int id, const unsigned int first_keyfrm_id,
                    const unsigned int num_visible, const unsigned int num_found,
                    map_database* map_db)
     : id_(id), first_keyfrm_id_(first_keyfrm_id), pos_w_(pos_w), ref_keyfrm_(ref_keyfrm),
-      num_observable_(num_visible), num_observed_(num_found), map_db_(map_db) {}
+      num_observable_(num_visible), num_observed_(num_found), map_db_(map_db) {
+          assign_to_grid();
+      }
 
 void landmark::set_pos_in_world(const Vec3_t& pos_w) {
     std::lock_guard<std::mutex> lock(mtx_position_);

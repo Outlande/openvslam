@@ -18,6 +18,8 @@ unsigned int bow_tree::match_frame_and_keyframe(data::keyframe* keyfrm, data::fr
 
     angle_checker<int> angle_checker;
 
+    bool can_check_orientation = !keyfrm->keypts_.empty();
+
     matched_lms_in_frm = std::vector<data::landmark*>(frm.num_keypts_, nullptr);
 
     const auto keyfrm_lms = keyfrm->get_landmarks();
@@ -88,7 +90,7 @@ unsigned int bow_tree::match_frame_and_keyframe(data::keyframe* keyfrm, data::fr
 
                 matched_lms_in_frm.at(best_frm_idx) = lm;
 
-                if (check_orientation_) {
+                if (check_orientation_  && can_check_orientation) {
                     const auto delta_angle
                         = keyfrm->keypts_.at(keyfrm_idx).angle - frm.keypts_.at(best_frm_idx).angle;
                     angle_checker.append_delta_angle(delta_angle, best_frm_idx);
@@ -110,7 +112,7 @@ unsigned int bow_tree::match_frame_and_keyframe(data::keyframe* keyfrm, data::fr
         }
     }
 
-    if (check_orientation_) {
+    if (check_orientation_ && can_check_orientation) {
         const auto invalid_matches = angle_checker.get_invalid_matches();
         for (const auto invalid_idx : invalid_matches) {
             matched_lms_in_frm.at(invalid_idx) = nullptr;
