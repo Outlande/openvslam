@@ -67,7 +67,7 @@ void equirectangular::convert_bearings_to_keypoints(const eigen_alloc_vector<Vec
     }
 }
 
-bool equirectangular::reproject_to_image(const Mat33_t& rot_cw, const Vec3_t& trans_cw, const Vec3_t& pos_w, Vec2_t& reproj, float& x_right) const {
+bool equirectangular::reproject_to_image(const Mat33_t& rot_cw, const Vec3_t& trans_cw, const Vec3_t& pos_w, Vec2_t& reproj, float& x_right, float x_bound_expand, float y_bound_expand) const {
     // convert to camera-coordinates
     const Vec3_t bearing = (rot_cw * pos_w + trans_cw).normalized();
 

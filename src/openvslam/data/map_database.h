@@ -180,6 +180,9 @@ public:
 
     void insert_into_grid(landmark* lm, int grid_x, int grid_y);
 
+    std::vector<landmark*> get_landmarks_in_frustum(Eigen::Matrix4d curr_pose, camera::base* curr_camera,
+                                                    double near, double far, double back);
+
     double grid_size_ = 0.1;
 
 private:

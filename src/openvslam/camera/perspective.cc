@@ -148,7 +148,7 @@ void perspective::convert_bearings_to_keypoints(const eigen_alloc_vector<Vec3_t>
     }
 }
 
-bool perspective::reproject_to_image(const Mat33_t& rot_cw, const Vec3_t& trans_cw, const Vec3_t& pos_w, Vec2_t& reproj, float& x_right) const {
+bool perspective::reproject_to_image(const Mat33_t& rot_cw, const Vec3_t& trans_cw, const Vec3_t& pos_w, Vec2_t& reproj, float& x_right, float x_bound_expand, float y_bound_expand) const {
     // convert to camera-coordinates
     const Vec3_t pos_c = rot_cw * pos_w + trans_cw;
 
@@ -164,8 +164,8 @@ bool perspective::reproject_to_image(const Mat33_t& rot_cw, const Vec3_t& trans_
     x_right = reproj(0) - focal_x_baseline_ * z_inv;
 
     // check if the point is visible
-    return (img_bounds_.min_x_ < reproj(0) && reproj(0) < img_bounds_.max_x_
-            && img_bounds_.min_y_ < reproj(1) && reproj(1) < img_bounds_.max_y_);
+    return (img_bounds_.min_x_ - x_bound_expand < reproj(0) && reproj(0) < img_bounds_.max_x_ + x_bound_expand
+            && img_bounds_.min_y_ - y_bound_expand < reproj(1) && reproj(1) < img_bounds_.max_y_) + y_bound_expand;
 }
 
 bool perspective::reproject_to_bearing(const Mat33_t& rot_cw, const Vec3_t& trans_cw, const Vec3_t& pos_w, Vec3_t& reproj) const {

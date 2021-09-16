@@ -159,7 +159,7 @@ public:
 
     //! Reproject the specified 3D point to image using camera pose and projection model
     //! (reprojected to inside of image -> true, to outside of image -> false)
-    virtual bool reproject_to_image(const Mat33_t& rot_cw, const Vec3_t& trans_cw, const Vec3_t& pos_w, Vec2_t& reproj, float& x_right) const = 0;
+    virtual bool reproject_to_image(const Mat33_t& rot_cw, const Vec3_t& trans_cw, const Vec3_t& pos_w, Vec2_t& reproj, float& x_right, float x_bound_expand = 0, float y_bound_expand = 0) const = 0;
 
     //! Reproject the specified 3D point to bearing vector using camera pose (Not depends on any projection models)
     //! (reprojected to inside of image -> true, to outside of image -> false)

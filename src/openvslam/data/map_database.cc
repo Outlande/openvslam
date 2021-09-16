@@ -6,7 +6,7 @@
 #include "openvslam/data/camera_database.h"
 #include "openvslam/data/map_database.h"
 #include "openvslam/util/converter.h"
-
+#include <opencv2/imgproc.hpp>
 #include <spdlog/spdlog.h>
 #include <nlohmann/json.hpp>
 
@@ -234,7 +234,7 @@ void map_database::from_json(camera_database* cam_db, bow_vocabulary* bow_vocab,
         assert(landmarks_.count(id));
         auto lm = landmarks_.at(id);
 
-        if (!lm->get_ref_keyframe()){
+        if (!lm->get_ref_keyframe()) {
             continue;
         }
         lm->update_normal_and_depth();
@@ -309,7 +309,8 @@ void map_database::register_landmark(const unsigned int id, const nlohmann::json
     data::keyframe* ref_keyfrm = nullptr;
     if (!keyframes_.count(ref_keyfrm_id)) {
         spdlog::debug("Invalid ref_keyfrm_id {} for this landmark {}", ref_keyfrm_id, id);
-    } else {
+    }
+    else {
         ref_keyfrm = keyframes_.at(ref_keyfrm_id);
     }
 
@@ -399,23 +400,126 @@ void map_database::to_json(nlohmann::json& json_keyfrms, nlohmann::json& json_la
     json_landmarks = landmarks;
 }
 
-void map_database::delete_from_grid(const landmark* lm)
-{
+void map_database::delete_from_grid(const landmark* lm) {
     std::lock_guard<std::mutex> lock(mtx_mapgrid_access_);
     Vec3_t pos_w = lm->get_pos_in_world();
     landmark_grid_[std::pair<int, int>(pos_w[0] / grid_size_, pos_w[1] / grid_size_)].erase(lm->id_);
 }
 
-void map_database::delete_from_grid(const unsigned int id, const int grid_x, const int grid_y)
-{
+void map_database::delete_from_grid(const unsigned int id, const int grid_x, const int grid_y) {
     std::lock_guard<std::mutex> lock(mtx_mapgrid_access_);
     landmark_grid_[std::pair<int, int>(grid_x, grid_y)].erase(id);
 }
 
-void map_database::insert_into_grid(landmark* lm, int grid_x, int grid_y)
-{
+void map_database::insert_into_grid(landmark* lm, int grid_x, int grid_y) {
     std::lock_guard<std::mutex> lock(mtx_mapgrid_access_);
     landmark_grid_[std::pair<int, int>(grid_x, grid_y)][lm->id_] = lm;
+}
+
+std::vector<landmark*> map_database::get_landmarks_in_frustum(Eigen::Matrix4d curr_pose, camera::base* curr_camera,
+                                                              double near, double far, double back) {
+    camera::image_bounds bounds = curr_camera->compute_image_bounds();
+    const std::vector<cv::KeyPoint> pixels{
+        cv::KeyPoint(bounds.min_x_, bounds.min_y_, 1.0),                  // left top
+        cv::KeyPoint(bounds.max_x_, bounds.min_y_, 1.0),                  // right top
+        cv::KeyPoint(bounds.min_x_, bounds.max_y_, 1.0),                  // left bottom
+        cv::KeyPoint(bounds.max_x_, bounds.max_y_, 1.0),                  // right bottom
+        /*cv::KeyPoint(bounds.max_x_ * 0.5, bounds.max_y_ * 0.5, 1.0)*/}; // middle - not needed
+    eigen_alloc_vector<Vec3_t> bearings;
+    curr_camera->convert_keypoints_to_bearings(pixels, bearings);
+
+    // Calculate the world coorindates of the near and far point of each bearing,
+    // find out their boundaries and convex hull
+    std::vector<cv::Point2f> points2d, hull;
+    std::vector<cv::Point3f> point_3d;
+    double min_x = std::numeric_limits<double>::max();
+    double max_x = std::numeric_limits<double>::min();
+    double min_y = std::numeric_limits<double>::max();
+    double max_y = std::numeric_limits<double>::min();
+    auto update_boundary = [&min_x, &max_x, &min_y, &max_y](double x, double y) {
+        if (x < min_x)
+            min_x = x;
+        if (x > max_x)
+            max_x = x;
+        if (y < min_y)
+            min_y = y;
+        if (y > max_y)
+            max_y = y;
+    };
+
+    // obtain inverse pose
+    const Eigen::Matrix3d rot_cw = curr_pose.block<3, 3>(0, 0);
+    const Eigen::Vector3d trans_cw = curr_pose.block<3, 1>(0, 3);
+    const Eigen::Matrix3d rot_wc = rot_cw.transpose();
+    Eigen::Vector3d cam_center = -rot_wc * trans_cw;
+
+    Eigen::Matrix4d Twc = Eigen::Matrix4d::Identity();
+    Twc.block<3, 3>(0, 0) = rot_wc;
+    Twc.block<3, 1>(0, 3) = cam_center + rot_wc * Eigen::Vector3d(0, 0, -back);
+
+    // const Eigen::Matrix4d Twc = camera_frame->get_cam_pose_inv(); // T(world, camera)
+    Eigen::Vector4d tcp; // t(camera, point)
+    tcp << 0, 0, 0, 1;
+    for (const auto& bearing : bearings) {
+        tcp.block<3, 1>(0, 0) = bearing * near;
+        Eigen::Vector4d twp = Twc * tcp;
+        points2d.emplace_back(twp(0), twp(1));
+        point_3d.emplace_back(twp(0), twp(1), twp(2));
+        update_boundary(twp(0), twp(1));
+        tcp.block<3, 1>(0, 0) = bearing * far;
+        twp = Twc * tcp;
+        points2d.emplace_back(twp(0), twp(1));
+        point_3d.emplace_back(twp(0), twp(1), twp(2));
+        update_boundary(twp(0), twp(1));
+    }
+    // nice formulation!!
+    cv::convexHull(points2d, hull);
+    std::vector<cv::Point2f> point_2d;
+    std::vector<cv::Point2f> convex_hull;
+    for (auto p2d : points2d)
+        point_2d.push_back(p2d);
+    for (auto ch : hull)
+        convex_hull.push_back(ch);
+
+    // Iterate all the grid cells within the boundary
+    int min_grid_x = std::floor(min_x / grid_size_);
+    int min_grid_y = std::floor(min_y / grid_size_);
+    int max_grid_x = std::ceil(max_x / grid_size_);
+    int max_grid_y = std::ceil(max_y / grid_size_);
+
+    auto pose_can_observe = [&curr_pose, &curr_camera](data::landmark* lm, float x_expand, float y_expand) {
+        const Vec3_t pos_w = lm->get_pos_in_world();
+        Vec2_t reproj;
+        float right_x;
+        return curr_camera->reproject_to_image(curr_pose.block(0, 0, 3, 3), curr_pose.block(0, 3, 3, 1), pos_w, reproj,
+                                               right_x, x_expand, y_expand);
+    };
+
+    std::vector<data::landmark*> landmarks;
+    for (int x = min_grid_x; x <= max_grid_x; ++x) {
+        for (int y = min_grid_y; y <= max_grid_y; ++y) {
+            if (pointPolygonTest(hull, cv::Point2f(x * grid_size_, y * grid_size_), false) < 0)
+                continue; // outside the hull
+
+            gridxy_index_pair cell(x, y);
+            if (landmark_grid_.find(cell) == landmark_grid_.end())
+                continue;
+            const auto& landmarks_in_grid = landmark_grid_[cell];
+
+            for (auto& item : landmarks_in_grid) {
+                // Ignore invalid landmarks and landmarks on other maps
+                if (!item.second)
+                    continue;
+
+                // Ignore landmarks outside of the current camera view (with a tolerance of 10 pixels)
+                if (!pose_can_observe(item.second, 10, 10))
+                    continue;
+
+                landmarks.push_back(item.second);
+            }
+        }
+    }
+    return landmarks;
 }
 
 } // namespace data

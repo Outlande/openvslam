@@ -114,7 +114,7 @@ void radial_division::convert_bearings_to_keypoints(const eigen_alloc_vector<Vec
     }
 }
 
-bool radial_division::reproject_to_image(const Mat33_t& rot_cw, const Vec3_t& trans_cw, const Vec3_t& pos_w, Vec2_t& reproj, float& x_right) const {
+bool radial_division::reproject_to_image(const Mat33_t& rot_cw, const Vec3_t& trans_cw, const Vec3_t& pos_w, Vec2_t& reproj, float& x_right, float x_bound_expand, float y_bound_expand) const {
     const Vec3_t pos_c = rot_cw * pos_w + trans_cw;
 
     if (pos_c(2) <= 0.0) {
@@ -126,10 +126,10 @@ bool radial_division::reproject_to_image(const Mat33_t& rot_cw, const Vec3_t& tr
     reproj(1) = fy_ * pos_c(1) * z_inv + cy_;
     x_right = reproj(0) - focal_x_baseline_ * z_inv;
 
-    if (reproj(0) < img_bounds_.min_x_ || reproj(0) > img_bounds_.max_x_) {
+    if (reproj(0) < img_bounds_.min_x_ - x_bound_expand || reproj(0) > img_bounds_.max_x_ + x_bound_expand) {
         return false;
     }
-    if (reproj(1) < img_bounds_.min_y_ || reproj(1) > img_bounds_.max_y_) {
+    if (reproj(1) < img_bounds_.min_y_ - y_bound_expand || reproj(1) > img_bounds_.max_y_ + y_bound_expand) {
         return false;
     }
 
