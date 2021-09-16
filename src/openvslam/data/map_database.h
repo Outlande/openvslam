@@ -16,6 +16,8 @@ namespace camera {
 class base;
 } // namespace camera
 
+typedef std::pair<int, int> gridxy_index_pair;
+
 namespace data {
 
 class frame;
@@ -172,6 +174,14 @@ public:
     //! (NOTE: cannot used in map_database class)
     static std::mutex mtx_database_;
 
+    void delete_from_grid(const landmark* lm);
+
+    void delete_from_grid(const unsigned int id, const int grid_x, const int grid_y);
+
+    void insert_into_grid(landmark* lm, int grid_x, int grid_y);
+
+    double grid_size_ = 0.1;
+
 private:
     /**
      * Decode JSON and register keyframe information to the map database
@@ -212,6 +222,8 @@ private:
     //! mutex for mutual exclusion controll between class methods
     mutable std::mutex mtx_map_access_;
 
+    mutable std::mutex mtx_mapgrid_access_;
+
     //-----------------------------------------
     // keyframe and landmark database
 
@@ -231,6 +243,8 @@ private:
 
     //! frame statistics
     frame_statistics frm_stats_;
+
+    std::map<gridxy_index_pair, std::unordered_map<unsigned int, landmark*>> landmark_grid_;
 };
 
 } // namespace data

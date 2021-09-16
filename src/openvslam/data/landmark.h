@@ -34,6 +34,8 @@ public:
 
     //! set world coordinates of this landmark
     void set_pos_in_world(const Vec3_t& pos_w);
+
+    void assign_to_grid();
     //! get world coordinates of this landmark
     Vec3_t get_pos_in_world() const;
 
@@ -101,6 +103,8 @@ public:
 
     //! encode landmark information as JSON
     nlohmann::json to_json() const;
+
+    int last_grid_x_, last_grid_y_;
 
 public:
     unsigned int id_;

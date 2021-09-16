@@ -47,6 +47,7 @@ void map_database::add_landmark(landmark* lm) {
 void map_database::erase_landmark(landmark* lm) {
     std::lock_guard<std::mutex> lock(mtx_map_access_);
     landmarks_.erase(lm->id_);
+    delete_from_grid(lm->id_, lm->last_grid_x_, lm->last_grid_y_);
 
     // TODO: delete object
 }
@@ -396,6 +397,25 @@ void map_database::to_json(nlohmann::json& json_keyfrms, nlohmann::json& json_la
         landmarks[std::to_string(id)] = lm->to_json();
     }
     json_landmarks = landmarks;
+}
+
+void map_database::delete_from_grid(const landmark* lm)
+{
+    std::lock_guard<std::mutex> lock(mtx_mapgrid_access_);
+    Vec3_t pos_w = lm->get_pos_in_world();
+    landmark_grid_[std::pair<int, int>(pos_w[0] / grid_size_, pos_w[1] / grid_size_)].erase(lm->id_);
+}
+
+void map_database::delete_from_grid(const unsigned int id, const int grid_x, const int grid_y)
+{
+    std::lock_guard<std::mutex> lock(mtx_mapgrid_access_);
+    landmark_grid_[std::pair<int, int>(grid_x, grid_y)].erase(id);
+}
+
+void map_database::insert_into_grid(landmark* lm, int grid_x, int grid_y)
+{
+    std::lock_guard<std::mutex> lock(mtx_mapgrid_access_);
+    landmark_grid_[std::pair<int, int>(grid_x, grid_y)][lm->id_] = lm;
 }
 
 } // namespace data

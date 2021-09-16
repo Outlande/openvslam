@@ -13,7 +13,9 @@ std::atomic<unsigned int> landmark::next_id_{0};
 
 landmark::landmark(const Vec3_t& pos_w, keyframe* ref_keyfrm, map_database* map_db)
     : id_(next_id_++), first_keyfrm_id_(ref_keyfrm->id_), pos_w_(pos_w),
-      ref_keyfrm_(ref_keyfrm), map_db_(map_db) {}
+      ref_keyfrm_(ref_keyfrm), map_db_(map_db) {
+    assign_to_grid();
+}
 
 landmark::landmark(const unsigned int id, const unsigned int first_keyfrm_id,
                    const Vec3_t& pos_w, keyframe* ref_keyfrm,
@@ -25,6 +27,20 @@ landmark::landmark(const unsigned int id, const unsigned int first_keyfrm_id,
 void landmark::set_pos_in_world(const Vec3_t& pos_w) {
     std::lock_guard<std::mutex> lock(mtx_position_);
     pos_w_ = pos_w;
+    int cur_grid_x = pos_w_[0] / map_db_->grid_size_;
+    int cur_grid_y = pos_w_[1] / map_db_->grid_size_;
+    if (cur_grid_x != last_grid_x_ || cur_grid_y != last_grid_y_) {
+        map_db_->delete_from_grid(id_, last_grid_x_, last_grid_y_);
+        map_db_->insert_into_grid(this, cur_grid_x, cur_grid_y);
+        last_grid_x_ = cur_grid_x;
+        last_grid_y_ = cur_grid_y;
+    }
+}
+
+void landmark::assign_to_grid() {
+    last_grid_x_ = pos_w_[0] / map_db_->grid_size_;
+    last_grid_y_ = pos_w_[1] / map_db_->grid_size_;
+    map_db_->insert_into_grid(this, last_grid_x_, last_grid_y_);
 }
 
 Vec3_t landmark::get_pos_in_world() const {
@@ -184,9 +200,10 @@ void landmark::compute_descriptor() {
 }
 
 void landmark::update_normal_and_depth() {
-    if (!observations_.count(ref_keyfrm_)) {  // This will rarely happen when landing map from local disk!
+    if (!observations_.count(ref_keyfrm_)) { // This will rarely happen when landing map from local disk!
         for (auto observation : observations_) {
-            if (!observation.first) continue;
+            if (!observation.first)
+                continue;
             ref_keyfrm_ = observation.first;
             break;
         }
