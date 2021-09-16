@@ -180,6 +180,13 @@ public:
 
     void insert_into_grid(landmark* lm, int grid_x, int grid_y);
 
+    // T is keyframe or frame
+    template<typename T>
+    std::shared_ptr<data::keyframe> create_virtual_keyfrm(T keyfrm, data::map_database* map_db,
+                                                          bow_database* bow_db,
+                                                          data::bow_vocabulary* bow_vocab,
+                                                          std::vector<data::landmark*>& nearby_landmarks);
+
     std::vector<landmark*> get_landmarks_in_frustum(Eigen::Matrix4d curr_pose, camera::base* curr_camera,
                                                     double near, double far, double back);
 

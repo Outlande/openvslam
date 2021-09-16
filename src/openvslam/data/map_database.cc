@@ -416,6 +416,55 @@ void map_database::insert_into_grid(landmark* lm, int grid_x, int grid_y) {
     landmark_grid_[std::pair<int, int>(grid_x, grid_y)][lm->id_] = lm;
 }
 
+template<typename T>
+std::shared_ptr<data::keyframe> map_database::create_virtual_keyfrm(T keyfrm, data::map_database* map_db,
+                                                                    bow_database* bow_db,
+                                                                    data::bow_vocabulary* bow_vocab,
+                                                                    std::vector<data::landmark*>& nearby_landmarks) {
+    std::vector<cv::KeyPoint> keypts, undist_keypts;
+    size_t num_keypts = nearby_landmarks.size();
+    std::vector<float> stereo_x_right(num_keypts, 0), depths(num_keypts, 0);
+    std::vector<data::landmark*> lm_vec(num_keypts, nullptr);
+    cv::Mat descriptors(num_keypts, 32, CV_8U);
+    openvslam::eigen_alloc_vector<Eigen::Vector3d> bearings;
+    bearings.resize(num_keypts);
+    auto camera_pose = keyfrm->get_cam_pose();
+    unsigned int idx = 0;
+
+    for (auto lm : nearby_landmarks) {
+        // TODO: now the descriptor may be invalid, that is a bug
+        if (lm->get_descriptor().cols != 32)
+            continue;
+        lm->get_descriptor().copyTo(descriptors.row(idx));
+        Eigen::Vector3d lm_in_camera = camera_pose.block(0, 0, 3, 3) * lm->get_pos_in_world() + camera_pose.block(0, 3, 3, 1);
+
+        if (lm_in_camera[2] <= 0)
+            lm_vec[idx] = nullptr;
+        else {
+            lm_vec[idx] = lm;
+
+            lm_in_camera = lm_in_camera / lm_in_camera[2];
+
+            bearings[idx] = lm_in_camera / lm_in_camera.head(2).norm();
+        }
+        idx++;
+    }
+    static const unsigned int num_scale_levels = keyfrm->num_scale_levels_;
+    static const float scale_factor = keyfrm->scale_factor_;
+
+    std::shared_ptr<data::keyframe> virtual_keyframe = std::make_shared<data::keyframe>(
+        static_cast<unsigned int>(-1), static_cast<unsigned int>(-1), keyfrm->timestamp_, camera_pose, keyfrm->camera_,
+        keyfrm->depth_thr_, num_keypts, keypts, undist_keypts, bearings, stereo_x_right, depths, descriptors,
+        num_scale_levels, scale_factor, bow_vocab, bow_db, map_db);
+
+    for (unsigned int i = 0; i < num_keypts; i++) {
+        if (lm_vec[i]) {
+            virtual_keyframe->add_landmark(lm_vec[i], i);
+        }
+    }
+    return virtual_keyframe;
+}
+
 std::vector<landmark*> map_database::get_landmarks_in_frustum(Eigen::Matrix4d curr_pose, camera::base* curr_camera,
                                                               double near, double far, double back) {
     camera::image_bounds bounds = curr_camera->compute_image_bounds();
