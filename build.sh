@@ -21,7 +21,7 @@ cmake \
 -v ./orb_vocab.fbow \
 -d ../datasets/openloris/market-1-1/ \
 -c example/openloris/openloris_market.yaml \
---frame-skip 1 -p results/market1.msg
+--frame-skip 1 -p results/market1.msg --eval_log
 
 
 # geek+ mapping

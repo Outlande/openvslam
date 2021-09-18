@@ -179,11 +179,15 @@ protected:
     //! Optimize the camera pose of the current frame
     bool optimize_current_frame_with_local_map();
 
+    bool optimize_current_frame_with_frustum_map();
+
     //! Update the local map
     void update_local_map();
 
     //! Acquire more 2D-3D matches using initial camera pose estimation
     void search_local_landmarks();
+
+    void search_frustum_landmarks();
 
     //! Check the new keyframe is needed or not
     bool new_keyframe_is_needed() const;
@@ -299,6 +303,8 @@ protected:
     int back_ = 1;
 
     std::vector<data::landmark*> pose_landmarks_;
+
+    std::shared_ptr<data::keyframe> virtual_keyframe_ = nullptr;
 };
 
 } // namespace openvslam
