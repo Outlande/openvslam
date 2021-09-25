@@ -50,6 +50,47 @@ bool frame_tracker::motion_based_track(data::frame& curr_frm, const data::frame&
         return false;
     }
     else {
+        spdlog::debug("motion based tracking succeed: {} inlier matches > {}", num_valid_matches, num_matches_thr_);
+        return true;
+    }
+}
+
+bool frame_tracker::frustum_based_track(data::frame& curr_frm, const data::frame& last_frm, std::vector<data::landmark*>& frustum_landmarks, const Mat44_t& velocity) const {
+    match::projection projection_matcher(0.9, true);
+
+    // Set the initial pose by using the motion model
+    curr_frm.set_cam_pose(velocity * last_frm.cam_pose_cw_);
+
+    // Initialize the 2D-3D matches
+    std::fill(curr_frm.landmarks_.begin(), curr_frm.landmarks_.end(), nullptr);
+
+    // Reproject the 3D points observed in the last frame and find 2D-3D matches
+    const float margin = (camera_->setup_type_ != camera::setup_type_t::Stereo) ? 20 : 10;
+    auto num_matches = projection_matcher.match_frame_and_landmarks(curr_frm, frustum_landmarks, margin);
+
+    if (num_matches < num_matches_thr_) {
+        // Increment the margin, and search again
+        std::fill(curr_frm.landmarks_.begin(), curr_frm.landmarks_.end(), nullptr);
+        num_matches = projection_matcher.match_frame_and_landmarks(curr_frm, frustum_landmarks, 2 * margin);
+    }
+
+    if (num_matches < num_matches_thr_) {
+        spdlog::debug("frustum based tracking failed: {} matches < {}", num_matches, num_matches_thr_);
+        return false;
+    }
+
+    // Pose optimization
+    pose_optimizer_.optimize(curr_frm);
+
+    // Discard the outliers
+    const auto num_valid_matches = discard_outliers(curr_frm);
+
+    if (num_valid_matches < num_matches_thr_) {
+        spdlog::debug("frustum based tracking failed: {} inlier matches < {}", num_valid_matches, num_matches_thr_);
+        return false;
+    }
+    else {
+        spdlog::debug("frustum based tracking succeed: {} inlier matches > {}", num_valid_matches, num_matches_thr_);
         return true;
     }
 }
@@ -86,6 +127,7 @@ bool frame_tracker::bow_match_based_track(data::frame& curr_frm, const data::fra
         return false;
     }
     else {
+        spdlog::debug("bow match based tracking succeed: {} inlier matches > {}", num_valid_matches, num_matches_thr_);
         return true;
     }
 }
@@ -119,6 +161,7 @@ bool frame_tracker::robust_match_based_track(data::frame& curr_frm, const data::
         return false;
     }
     else {
+        spdlog::debug("robust match based tracking succeed: {} inlier matches > {}", num_valid_matches, num_matches_thr_);
         return true;
     }
 }

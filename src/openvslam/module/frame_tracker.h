@@ -23,6 +23,9 @@ public:
 
     bool motion_based_track(data::frame& curr_frm, const data::frame& last_frm, const Mat44_t& velocity) const;
 
+    bool frustum_based_track(data::frame& curr_frm, const data::frame& last_frm, std::vector<data::landmark*>& frustum_landmarks, const Mat44_t& velocity) const;
+
+
     bool bow_match_based_track(data::frame& curr_frm, const data::frame& last_frm, data::keyframe* ref_keyfrm) const;
 
     bool robust_match_based_track(data::frame& curr_frm, const data::frame& last_frm, data::keyframe* ref_keyfrm) const;

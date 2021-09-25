@@ -410,6 +410,9 @@ void tracking_module::localize() {
     std::lock_guard<std::mutex> lock(data::map_database::mtx_database_);
 
     {
+        // set the reference keyframe of the current frame
+        curr_frm_.ref_keyfrm_ = last_frm_.ref_keyfrm_;
+
         if (twist_is_valid_ && last_reloc_frm_id_ + 2 < curr_frm_.id_)
             curr_frm_.set_cam_pose(twist_ * last_frm_.cam_pose_cw_);
         else
@@ -633,12 +636,21 @@ bool tracking_module::localize_current_frame() {
         if (twist_is_valid_ && last_reloc_frm_id_ + 2 < curr_frm_.id_) {
             // if the motion model is valid
             succeeded = frame_tracker_.motion_based_track(curr_frm_, last_frm_, twist_);
+            if (!succeeded) {
+                succeeded = frame_tracker_.frustum_based_track(curr_frm_, last_frm_, pose_landmarks_, twist_);
+            }
+        }
+        else {
+            succeeded = frame_tracker_.motion_based_track(curr_frm_, last_frm_, Mat44_t::Identity());
+            if (!succeeded) {
+                succeeded = frame_tracker_.frustum_based_track(curr_frm_, last_frm_, pose_landmarks_, Mat44_t::Identity());
+            }
         }
         if (!succeeded) {
-            succeeded = frame_tracker_.bow_match_based_track(curr_frm_, last_frm_, projection_keyframe_.get());
+            succeeded = frame_tracker_.bow_match_based_track(curr_frm_, last_frm_, curr_frm_.ref_keyfrm_);
         }
         if (!succeeded) {
-            succeeded = frame_tracker_.robust_match_based_track(curr_frm_, last_frm_, projection_keyframe_.get());
+            succeeded = frame_tracker_.robust_match_based_track(curr_frm_, last_frm_, curr_frm_.ref_keyfrm_);
         }
     }
     else {

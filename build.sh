@@ -19,7 +19,7 @@ cmake \
 # openloris localization
 ./build/run_openloris_localization \
 -v ./orb_vocab.fbow \
--d ../datasets/openloris/market-1-1/ \
+-d ../datasets/openloris/market-1-2/ \
 -c example/openloris/openloris_market.yaml \
 --frame-skip 1 -p results/market1.msg --eval_log
 

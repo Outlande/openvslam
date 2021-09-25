@@ -151,6 +151,7 @@ bool relocalizer::reloc_by_candidates(data::frame& curr_frm,
         }
 
         // Succeeded in relocatization
+        std::cout<<"num_valid_obs: "<<num_valid_obs<<std::endl;
         spdlog::info("relocalization succeeded");
         // TODO: should set the reference keyframe of the current frame
 
