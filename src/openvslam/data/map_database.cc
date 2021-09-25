@@ -431,9 +431,6 @@ std::shared_ptr<data::keyframe> map_database::create_virtual_keyfrm(data::frame&
     unsigned int idx = 0;
 
     for (auto lm : nearby_landmarks) {
-        // TODO: now the descriptor may be invalid, that is a bug
-        if (lm->get_descriptor().cols != 32)
-            continue;
         lm->get_descriptor().copyTo(descriptors.row(idx));
         Eigen::Vector3d lm_in_camera = camera_pose.block(0, 0, 3, 3) * lm->get_pos_in_world() + camera_pose.block(0, 3, 3, 1);
 
@@ -479,9 +476,6 @@ std::shared_ptr<data::keyframe> map_database::create_virtual_keyfrm(data::keyfra
     unsigned int idx = 0;
 
     for (auto lm : nearby_landmarks) {
-        // TODO: now the descriptor may be invalid, that is a bug
-        if (lm->get_descriptor().cols != 32)
-            continue;
         lm->get_descriptor().copyTo(descriptors.row(idx));
         Eigen::Vector3d lm_in_camera = camera_pose.block(0, 0, 3, 3) * lm->get_pos_in_world() + camera_pose.block(0, 3, 3, 1);
 
@@ -616,6 +610,27 @@ std::vector<landmark*> map_database::get_landmarks_in_frustum(Eigen::Matrix4d cu
         }
     }
     return landmarks;
+}
+
+std::vector<landmark*> map_database::get_landmarks_in_covisibility(data::keyframe* keyfrm, int top_number) {
+    std::vector<data::keyframe*> covisi_kfs = keyfrm->graph_node_->get_top_n_covisibilities(top_number);
+    covisi_kfs.push_back(keyfrm);
+
+    std::vector<data::landmark*> covis_landmarks;
+    std::unordered_set<unsigned int> landmarks_ids;
+    for (auto kf : covisi_kfs) {
+        std::vector<data::landmark*> lms = kf->get_landmarks();
+        for (auto lm : lms) {
+            if (!lm)
+                continue;
+            if (landmarks_ids.find(lm->id_) != landmarks_ids.end())
+                continue;
+            covis_landmarks.push_back(lm);
+            landmarks_ids.emplace(lm->id_);
+        }
+    }
+
+    return covis_landmarks;
 }
 
 } // namespace data

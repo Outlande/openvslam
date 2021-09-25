@@ -82,7 +82,7 @@ tracking_module::tracking_module(const std::shared_ptr<config>& cfg, system* sys
       reloc_angle_threshold_(get_reloc_angle_threshold(cfg->yaml_node_)),
       system_(system), map_db_(map_db), bow_vocab_(bow_vocab), bow_db_(bow_db),
       initializer_(cfg->camera_->setup_type_, map_db, bow_db, util::yaml_optional_ref(cfg->yaml_node_, "Initializer")),
-      frame_tracker_(camera_, 10), relocalizer_(bow_db_), pose_optimizer_(),
+      frame_tracker_(camera_, 10), relocalizer_(bow_db_, map_db_, bow_vocab), pose_optimizer_(),
       keyfrm_inserter_(cfg->camera_->setup_type_, true_depth_thr_, map_db, bow_db, 0, cfg->camera_->fps_) {
     spdlog::debug("CONSTRUCT: tracking_module");
 
@@ -95,6 +95,9 @@ tracking_module::tracking_module(const std::shared_ptr<config>& cfg, system* sys
     if (camera_->setup_type_ == camera::setup_type_t::Stereo) {
         extractor_right_ = new feature::orb_extractor(orb_params);
     }
+    relocalizer_.near_ = near_;
+    relocalizer_.far_ = far_;
+    relocalizer_.back_ = back_;
 }
 
 tracking_module::~tracking_module() {
@@ -625,17 +628,17 @@ bool tracking_module::localize_current_frame() {
 
     if (tracking_state_ == tracker_state_t::Tracking) {
         pose_landmarks_ = map_db_->get_landmarks_in_frustum(curr_frm_.get_cam_pose(), curr_frm_.camera_, near_, far_, back_);
-        virtual_keyframe_ = map_db_->create_virtual_keyfrm(curr_frm_, map_db_, bow_db_, bow_vocab_, pose_landmarks_);
+        projection_keyframe_ = map_db_->create_virtual_keyfrm(curr_frm_, map_db_, bow_db_, bow_vocab_, pose_landmarks_);
 
         if (twist_is_valid_ && last_reloc_frm_id_ + 2 < curr_frm_.id_) {
             // if the motion model is valid
             succeeded = frame_tracker_.motion_based_track(curr_frm_, last_frm_, twist_);
         }
         if (!succeeded) {
-            succeeded = frame_tracker_.bow_match_based_track(curr_frm_, last_frm_, virtual_keyframe_.get());
+            succeeded = frame_tracker_.bow_match_based_track(curr_frm_, last_frm_, projection_keyframe_.get());
         }
         if (!succeeded) {
-            succeeded = frame_tracker_.robust_match_based_track(curr_frm_, last_frm_, virtual_keyframe_.get());
+            succeeded = frame_tracker_.robust_match_based_track(curr_frm_, last_frm_, projection_keyframe_.get());
         }
     }
     else {

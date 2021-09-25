@@ -25,6 +25,8 @@ public:
     //! NOTE: matched_lms_in_frm.size()はframeの特徴点数と一致
     unsigned int match_frame_and_keyframe(data::keyframe* keyfrm, data::frame& frm, std::vector<data::landmark*>& matched_lms_in_frm) const;
 
+    unsigned int match_frame_and_keyframe_combine(data::keyframe* keyfrm, data::frame& frm, std::vector<data::landmark*>& matched_lms_in_frm) const;
+
     //! keyframe1で観測している特徴点とkeyframe2で観測している特徴点の対応を求め，それを元にkeyframe1の特徴点と3次元点の対応情報を得る
     //! matched_lms_in_keyfrm_1には，keyframe1の各特徴点に対応する(keyframe2で観測された)3次元点が格納される
     //! NOTE: matched_lms_in_keyfrm_1.size()はkeyframe1の特徴点数と一致

@@ -2,6 +2,7 @@
 #include "openvslam/data/keyframe.h"
 #include "openvslam/data/landmark.h"
 #include "openvslam/data/bow_database.h"
+#include "openvslam/data/map_database.h"
 #include "openvslam/module/relocalizer.h"
 #include "openvslam/util/fancy_index.h"
 
@@ -10,10 +11,10 @@
 namespace openvslam {
 namespace module {
 
-relocalizer::relocalizer(data::bow_database* bow_db,
+relocalizer::relocalizer(data::bow_database* bow_db, data::map_database* map_db, data::bow_vocabulary* bow_vocab,
                          const double bow_match_lowe_ratio, const double proj_match_lowe_ratio,
                          const unsigned int min_num_bow_matches, const unsigned int min_num_valid_obs)
-    : bow_db_(bow_db),
+    : bow_db_(bow_db), map_db_(map_db), bow_vocab_(bow_vocab),
       min_num_bow_matches_(min_num_bow_matches), min_num_valid_obs_(min_num_valid_obs),
       bow_matcher_(bow_match_lowe_ratio, true), proj_matcher_(proj_match_lowe_ratio, true),
       pose_optimizer_() {
@@ -48,8 +49,17 @@ bool relocalizer::reloc_by_candidates(data::frame& curr_frm,
         if (keyfrm->will_be_erased()) {
             continue;
         }
+        std::vector<data::landmark*> pose_landmarks = map_db_->get_landmarks_in_frustum(keyfrm->get_cam_pose(), keyfrm->camera_, near_, far_, back_);
+        std::shared_ptr<data::keyframe> projection_keyframe = map_db_->create_virtual_keyfrm(keyfrm, map_db_, bow_db_, bow_vocab_, pose_landmarks);
 
-        const auto num_matches = bow_matcher_.match_frame_and_keyframe(keyfrm, curr_frm, matched_landmarks.at(i));
+        // covisibility_keyframe means a virtual frame composed of landmarks in the 5 largest covisibility keyframes
+        std::vector<data::landmark*> covis_landmarks = map_db_->get_landmarks_in_covisibility(keyfrm, 5);
+        std::shared_ptr<data::keyframe> covisibility_keyframe = map_db_->create_virtual_keyfrm(keyfrm, map_db_, bow_db_, bow_vocab_, covis_landmarks);
+
+        matched_landmarks.at(i) = std::vector<data::landmark*>(curr_frm.num_keypts_, nullptr);
+        const auto num_matches_first = bow_matcher_.match_frame_and_keyframe_combine(keyfrm, curr_frm, matched_landmarks.at(i));
+        const auto num_matches_twice = bow_matcher_.match_frame_and_keyframe_combine(covisibility_keyframe.get(), curr_frm, matched_landmarks.at(i));
+        const auto num_matches = num_matches_first + num_matches_twice;
         // Discard the candidate if the number of 2D-3D matches is less than the threshold
         if (num_matches < min_num_bow_matches_) {
             continue;
@@ -103,7 +113,7 @@ bool relocalizer::reloc_by_candidates(data::frame& curr_frm,
         // 3. Apply projection match to increase 2D-3D matches
 
         // Projection match based on the pre-optimized camera pose
-        auto num_found = proj_matcher_.match_frame_and_keyframe(curr_frm, reloc_candidates.at(i), already_found_landmarks, 10, 100);
+        auto num_found = proj_matcher_.match_frame_and_keyframe(curr_frm, projection_keyframe.get(), already_found_landmarks, 10, 100);
         // Discard the candidate if the number of the inliers is less than the threshold
         if (num_valid_obs + num_found < min_num_valid_obs_) {
             continue;
@@ -124,7 +134,7 @@ bool relocalizer::reloc_by_candidates(data::frame& curr_frm,
                 already_found_landmarks.insert(curr_frm.landmarks_.at(idx));
             }
             // Apply projection match again, then set the 2D-3D matches
-            auto num_additional = proj_matcher_.match_frame_and_keyframe(curr_frm, reloc_candidates.at(i), already_found_landmarks, 3, 64);
+            auto num_additional = proj_matcher_.match_frame_and_keyframe(curr_frm, projection_keyframe.get(), already_found_landmarks, 3, 64);
 
             // Discard if the number of the observations is less than the threshold
             if (num_valid_obs + num_additional < min_num_valid_obs_) {

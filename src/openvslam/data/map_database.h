@@ -194,6 +194,8 @@ public:
 
     std::vector<landmark*> get_landmarks_in_frustum(Eigen::Matrix4d curr_pose, camera::base* curr_camera,
                                                     double near, double far, double back);
+    
+    std::vector<landmark*> get_landmarks_in_covisibility(data::keyframe* keyfrm, int top_number);
 
     double grid_size_ = 0.1;
 

@@ -11,6 +11,7 @@ namespace openvslam {
 namespace data {
 class frame;
 class bow_database;
+class map_database;
 } // namespace data
 
 namespace module {
@@ -18,7 +19,7 @@ namespace module {
 class relocalizer {
 public:
     //! Constructor
-    explicit relocalizer(data::bow_database* bow_db,
+    explicit relocalizer(data::bow_database* bow_db, data::map_database* map_db, data::bow_vocabulary* bow_vocab,
                          const double bow_match_lowe_ratio = 0.75, const double proj_match_lowe_ratio = 0.9,
                          const unsigned int min_num_bow_matches = 20, const unsigned int min_num_valid_obs = 50);
 
@@ -31,6 +32,10 @@ public:
     //! Relocalize the specified frame by given candidates list
     bool reloc_by_candidates(data::frame& curr_frm,
                              const std::vector<openvslam::data::keyframe*>& reloc_candidates);
+
+    float near_;
+    float far_;
+    float back_;
 
 private:
     //! Extract valid (non-deleted) landmarks from landmark vector
@@ -45,6 +50,11 @@ private:
 
     //! BoW database
     data::bow_database* bow_db_;
+
+    //! Map database
+    data::map_database* map_db_;
+
+    data::bow_vocabulary* bow_vocab_;
 
     //! minimum threshold of the number of BoW matches
     const unsigned int min_num_bow_matches_;

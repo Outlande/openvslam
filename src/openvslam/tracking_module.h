@@ -298,13 +298,13 @@ protected:
     int lost_num = 0;
     int relocal_num = 0;
 
-    int near_ = 0;
-    int far_ = 10;
-    int back_ = 1;
+    float near_ = 0;
+    float far_ = 15;
+    float back_ = 1;
 
     std::vector<data::landmark*> pose_landmarks_;
 
-    std::shared_ptr<data::keyframe> virtual_keyframe_ = nullptr;
+    std::shared_ptr<data::keyframe> projection_keyframe_ = nullptr;
 };
 
 } // namespace openvslam

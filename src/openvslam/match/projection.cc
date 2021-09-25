@@ -27,7 +27,7 @@ unsigned int projection::match_frame_and_landmarks(data::frame& frm, const std::
                                                                margin * frm.scale_factors_.at(pred_scale_level),
                                                                // search level more can get more right levels
                                                                0, frm.num_scale_levels_ - 1);
-                                                               // pred_scale_level - 1, pred_scale_level);
+        // pred_scale_level - 1, pred_scale_level);
         if (indices_in_cell.empty()) {
             continue;
         }
@@ -215,6 +215,8 @@ unsigned int projection::match_frame_and_keyframe(data::frame& curr_frm, data::k
 
     angle_checker<int> angle_checker;
 
+    bool can_check_orientation = !keyfrm->keypts_.empty();
+
     const Mat33_t rot_cw = curr_frm.cam_pose_cw_.block<3, 3>(0, 0);
     const Vec3_t trans_cw = curr_frm.cam_pose_cw_.block<3, 1>(0, 3);
     const Vec3_t cam_center = -rot_cw.transpose() * trans_cw;
@@ -298,14 +300,14 @@ unsigned int projection::match_frame_and_keyframe(data::frame& curr_frm, data::k
         curr_frm.landmarks_.at(best_idx) = lm;
         num_matches++;
 
-        if (check_orientation_) {
+        if (check_orientation_ && can_check_orientation) {
             const auto delta_angle
                 = keyfrm->undist_keypts_.at(idx).angle - curr_frm.undist_keypts_.at(best_idx).angle;
             angle_checker.append_delta_angle(delta_angle, best_idx);
         }
     }
 
-    if (check_orientation_) {
+    if (check_orientation_ && can_check_orientation) {
         const auto invalid_matches = angle_checker.get_invalid_matches();
         for (const auto invalid_idx : invalid_matches) {
             curr_frm.landmarks_.at(invalid_idx) = nullptr;

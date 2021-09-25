@@ -123,6 +123,114 @@ unsigned int bow_tree::match_frame_and_keyframe(data::keyframe* keyfrm, data::fr
     return num_matches;
 }
 
+unsigned int bow_tree::match_frame_and_keyframe_combine(data::keyframe* keyfrm, data::frame& frm, std::vector<data::landmark*>& matched_lms_in_frm) const {
+    unsigned int num_matches = 0;
+
+    angle_checker<int> angle_checker;
+
+    bool can_check_orientation = !keyfrm->keypts_.empty();
+
+    const auto keyfrm_lms = keyfrm->get_landmarks();
+
+#ifdef USE_DBOW2
+    DBoW2::FeatureVector::const_iterator keyfrm_itr = keyfrm->bow_feat_vec_.begin();
+    DBoW2::FeatureVector::const_iterator frm_itr = frm.bow_feat_vec_.begin();
+    const DBoW2::FeatureVector::const_iterator kryfrm_end = keyfrm->bow_feat_vec_.end();
+    const DBoW2::FeatureVector::const_iterator frm_end = frm.bow_feat_vec_.end();
+#else
+    fbow::BoWFeatVector::const_iterator keyfrm_itr = keyfrm->bow_feat_vec_.begin();
+    fbow::BoWFeatVector::const_iterator frm_itr = frm.bow_feat_vec_.begin();
+    const fbow::BoWFeatVector::const_iterator kryfrm_end = keyfrm->bow_feat_vec_.end();
+    const fbow::BoWFeatVector::const_iterator frm_end = frm.bow_feat_vec_.end();
+#endif
+
+    while (keyfrm_itr != kryfrm_end && frm_itr != frm_end) {
+        // Check if the node numbers of BoW tree match
+        if (keyfrm_itr->first == frm_itr->first) {
+            // If the node numbers of BoW tree match,
+            // Check in practice if matches exist between the frame and keyframe
+            const auto& keyfrm_indices = keyfrm_itr->second;
+            const auto& frm_indices = frm_itr->second;
+
+            for (const auto keyfrm_idx : keyfrm_indices) {
+                // Ignore if the keypoint of keyframe is not associated any 3D points
+                auto lm = keyfrm_lms.at(keyfrm_idx);
+                if (!lm) {
+                    continue;
+                }
+                if (lm->will_be_erased()) {
+                    continue;
+                }
+
+                const auto& keyfrm_desc = keyfrm->descriptors_.row(keyfrm_idx);
+
+                unsigned int best_hamm_dist = MAX_HAMMING_DIST;
+                int best_frm_idx = -1;
+                unsigned int second_best_hamm_dist = MAX_HAMMING_DIST;
+
+                for (const auto frm_idx : frm_indices) {
+                    if (matched_lms_in_frm.at(frm_idx)) {
+                        continue;
+                    }
+
+                    const auto& frm_desc = frm.descriptors_.row(frm_idx);
+
+                    const auto hamm_dist = compute_descriptor_distance_32(keyfrm_desc, frm_desc);
+
+                    if (hamm_dist < best_hamm_dist) {
+                        second_best_hamm_dist = best_hamm_dist;
+                        best_hamm_dist = hamm_dist;
+                        best_frm_idx = frm_idx;
+                    }
+                    else if (hamm_dist < second_best_hamm_dist) {
+                        second_best_hamm_dist = hamm_dist;
+                    }
+                }
+
+                if (HAMMING_DIST_THR_LOW < best_hamm_dist) {
+                    continue;
+                }
+
+                // Ratio test
+                if (lowe_ratio_ * second_best_hamm_dist < static_cast<float>(best_hamm_dist)) {
+                    continue;
+                }
+
+                matched_lms_in_frm.at(best_frm_idx) = lm;
+
+                if (check_orientation_  && can_check_orientation) {
+                    const auto delta_angle
+                        = keyfrm->keypts_.at(keyfrm_idx).angle - frm.keypts_.at(best_frm_idx).angle;
+                    angle_checker.append_delta_angle(delta_angle, best_frm_idx);
+                }
+
+                ++num_matches;
+            }
+
+            ++keyfrm_itr;
+            ++frm_itr;
+        }
+        else if (keyfrm_itr->first < frm_itr->first) {
+            // Since the node number of the keyframe is smaller, increment the iterator until the node numbers match
+            keyfrm_itr = keyfrm->bow_feat_vec_.lower_bound(frm_itr->first);
+        }
+        else {
+            // Since the node number of the frame is smaller, increment the iterator until the node numbers match
+            frm_itr = frm.bow_feat_vec_.lower_bound(keyfrm_itr->first);
+        }
+    }
+
+    if (check_orientation_ && can_check_orientation) {
+        const auto invalid_matches = angle_checker.get_invalid_matches();
+        for (const auto invalid_idx : invalid_matches) {
+            matched_lms_in_frm.at(invalid_idx) = nullptr;
+            --num_matches;
+        }
+    }
+
+    return num_matches;
+}
+
 unsigned int bow_tree::match_keyframes(data::keyframe* keyfrm_1, data::keyframe* keyfrm_2, std::vector<data::landmark*>& matched_lms_in_keyfrm_1) const {
     unsigned int num_matches = 0;
 

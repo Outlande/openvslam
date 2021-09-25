@@ -56,3 +56,5 @@ cmake \
 localize_track
 
 origin_localize
+
+# 可以解决不同相机模型的定位
