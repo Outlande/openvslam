@@ -1,3 +1,12 @@
+cmake -DCMAKE_BUILD_TYPE=Debug \
+    -DUSE_PANGOLIN_VIEWER=ON \
+    -DINSTALL_PANGOLIN_VIEWER=ON \
+    -DUSE_SOCKET_PUBLISHER=OFF \
+    -DUSE_STACK_TRACE_LOGGER=ON \
+    -DBUILD_TESTS=OFF \
+    -DBUILD_EXAMPLES=ON \
+    ..
+
 cmake \
     -DUSE_PANGOLIN_VIEWER=ON \
     -DINSTALL_PANGOLIN_VIEWER=ON \
@@ -19,7 +28,7 @@ cmake \
 # openloris localization
 ./build/run_openloris_localization \
 -v ./orb_vocab.fbow \
--d ../datasets/openloris/market-1-2/ \
+-d ../datasets/openloris/market-1-1/ \
 -c example/openloris/openloris_market.yaml \
 --frame-skip 1 -p results/market1.msg --eval_log
 

@@ -577,13 +577,63 @@ std::vector<landmark*> map_database::get_landmarks_in_frustum(Eigen::Matrix4d cu
     int max_grid_x = std::ceil(max_x / grid_size_);
     int max_grid_y = std::ceil(max_y / grid_size_);
 
-    auto pose_can_observe = [&curr_pose, &curr_camera](data::landmark* lm, float x_expand, float y_expand) {
+    // prevent occlusion
+    std::unordered_map<std::pair<int, int>, std::vector<std::pair<data::landmark*, float>>, pair_hash> occlusion_judge;
+    // every 3*3 pixel squares can not have over 5 points
+    auto pose_can_observe = [&curr_pose, &curr_camera, &occlusion_judge](data::landmark* lm, float x_expand, float y_expand) {
         const Vec3_t pos_w = lm->get_pos_in_world();
         Vec2_t reproj;
         float right_x;
-        return curr_camera->reproject_to_image(curr_pose.block(0, 0, 3, 3), curr_pose.block(0, 3, 3, 1), pos_w, reproj,
+        bool in_image = curr_camera->reproject_to_image(curr_pose.block(0, 0, 3, 3), curr_pose.block(0, 3, 3, 1), pos_w, reproj,
                                                right_x, x_expand, y_expand);
+        if (!in_image)
+            return false;
+        Vec3_t cam_pose = curr_pose.block(0, 0, 3, 3) * pos_w + curr_pose.block(0, 3, 3, 1);
+        size_t max_loc;
+        float max_depth = 0;
+        std::pair<int, int> max_proj;
+        int number = 0;
+        for (int i=-1; i<=1; i++) {
+            for (int j=-1; j<=1; j++) {
+                std::pair<int, int> proj = std::make_pair(static_cast<int> (reproj(0)+i), static_cast<int> (reproj(1)+j));
+                if (occlusion_judge.find(proj) != occlusion_judge.end()) {
+                    std::vector<std::pair<data::landmark*, float>> curr_lms = occlusion_judge[proj];
+                    for (size_t idx=0; idx<curr_lms.size(); idx++) {
+                        number++;
+                        if (curr_lms[idx].second > max_depth) {
+                            max_depth = curr_lms[idx].second;
+                            max_loc = idx;
+                            max_proj = proj;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (number >= 1) {
+            if (cam_pose(2) >= max_depth)
+                return false;
+            else {
+                occlusion_judge[max_proj].erase(occlusion_judge[max_proj].begin() + max_loc);
+                if (occlusion_judge[max_proj].size() == 0)
+                    occlusion_judge.erase(max_proj);
+            }
+        }
+        std::pair<int, int> proj = std::make_pair(static_cast<int> (reproj(0)), static_cast<int> (reproj(1)));
+        if (occlusion_judge.find(proj) == occlusion_judge.end()) {
+            occlusion_judge[proj] = std::vector<std::pair<data::landmark*, float>>();
+        }
+        occlusion_judge[proj].push_back(std::make_pair(lm, cam_pose(2)));
+        return true;
     };
+
+    // auto pose_can_observe = [&curr_pose, &curr_camera](data::landmark* lm, float x_expand, float y_expand) {
+    //     const Vec3_t pos_w = lm->get_pos_in_world();
+    //     Vec2_t reproj;
+    //     float right_x;
+    //     return curr_camera->reproject_to_image(curr_pose.block(0, 0, 3, 3), curr_pose.block(0, 3, 3, 1), pos_w, reproj,
+    //                                            right_x, x_expand, y_expand);
+    // };
 
     std::vector<data::landmark*> landmarks;
     for (int x = min_grid_x; x <= max_grid_x; ++x) {
@@ -609,7 +659,16 @@ std::vector<landmark*> map_database::get_landmarks_in_frustum(Eigen::Matrix4d cu
             }
         }
     }
-    return landmarks;
+    // return landmarks;
+
+    std::vector<data::landmark*> occlusion_landmarks;
+    for (auto pixel:occlusion_judge) {
+        std::vector<std::pair<data::landmark*, float>> lm_vector = pixel.second;
+        for (auto lm:lm_vector)
+            occlusion_landmarks.push_back(lm.first);
+    }
+    return occlusion_landmarks;
+    
 }
 
 std::vector<landmark*> map_database::get_landmarks_in_covisibility(data::keyframe* keyfrm, int top_number) {
