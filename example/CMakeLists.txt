@@ -62,6 +62,9 @@ list(APPEND EXECUTABLE_TARGETS run_euroc_localization)
 add_executable(run_geek_localization run_geek_localization.cc util/tum_rgbd_util.cc)
 list(APPEND EXECUTABLE_TARGETS run_geek_localization)
 
+add_executable(run_openloris_localization run_openloris_localization.cc util/tum_rgbd_util.cc)
+list(APPEND EXECUTABLE_TARGETS run_openloris_localization)
+
 add_executable(run_kitti_slam run_kitti_slam.cc util/kitti_util.cc)
 list(APPEND EXECUTABLE_TARGETS run_kitti_slam)
 
